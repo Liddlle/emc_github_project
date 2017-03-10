@@ -1,6 +1,6 @@
 
 ```{bash}
-#ssh -L -i ~/.ssh/id_rsa 33306:web.ghtorrent.org:3306 ghtorrent@web.ghtorrent.org
+#ssh -i ~/.ssh/id_rsa -L 33306:web.ghtorrent.org:3306 ghtorrent@web.ghtorrent.org
 #ps axuf | grep ssh
 #mysql -u ght -h 127.0.0.1 -P 33306 ghtorrent
 ```
@@ -11,11 +11,11 @@ library("knitr")
 library("ggplot2")
 library(readr)
 library("reshape")
-if (! "RMySQL" %in% installed.packages()) install.packages("RMySQL")
-if (! "sqldf" %in% installed.packages()) install.packages("sqldf")
-if (! "optparse" %in% installed.packages()) install.packages("optparse")
-if (! "foreach" %in% installed.packages()) install.packages("foreach")
-if (! "doMC" %in% installed.packages()) install.packages("doMC")
+library(RMySQL)
+#library(sqldf)
+library(optparse)
+library(foreach)#
+library(doMC)#
 
 require(devtools)
 
@@ -27,7 +27,9 @@ require(devtools)
 * Подумать как можно выделять основных участников (core) проекта
 
 ```{r}
-source(file = "R/packages.R")
+#попробовать переделать с dplyr
+#my_db <- src_mysql("ghtorrent", host = '127.0.0.1', port = 33306, user = "ght", password = "")
+
 library(optparse)
 library(knitr)
 #rm(list = ls(all = TRUE))
@@ -47,24 +49,57 @@ ghtor = dbConnect(dbDriver("MySQL"),
           dbname = mysql.db,
           host = mysql.host,
           port = mysql.port)
+
 #dbClearResult(dbListResults(ghtor)[[1]])
-dbListFields(ghtor,"followers")
+dbListFields(ghtor,"projects")
 dbListTables(ghtor)
+```
 
-dbGetQuery(ghtor, "top 10 select * from followers limit 5")
 
-x = dbGetQuery(ghtor, "select org_id, COUNT(*) as total_m from organization_members group by org_id order by total_m DESC limit 50") #топ 50 организаций по кол-ву участников 
+Участники топ-10 организаций
+```{r}
+top_organizations = dbGetQuery(ghtor, "select org_id, COUNT(*) as total_m from organization_members group by org_id order by total_m DESC limit 50") %>% arrange(desc(total_m)) #топ 50 организаций по кол-ву участников 
 #select id, login from users where id = '95143' 
 
-top_orgs = paste(c(x[1:20,1]), collapse = "','")
-top_orgs = paste0(c('select * from organization_members where org_id in ', "('", top_orgs, "')"), collapse = "")
+top_10 = paste(c(top_organizations[1:10,1]), collapse = "','")
 
-org_mem = dbGetQuery(ghtor, top_orgs) 
+#кто эти топовые организации
+#dbGetQuery(ghtor, paste0(c('select id,login from users where id in ', "('", top_10, "')"), collapse = ""))
+
+members = paste0(c('select * from organization_members where org_id in ', "('", top_10, "')"), collapse = "")
+members = dbGetQuery(ghtor, members) 
+
+#write_csv(top_organizations, "~/emc_github_project/top_organizations.csv")
+#write_csv(members, "~/emc_github_project/members.csv")
+```
 
 
+Чек по проектам 
+```{r}
+#достать проекты, где владельцы - топ орги
+projects = paste0(c('select * from projects where owner_id in ', "('", top_10, "')"), collapse = "")
+projects = dbGetQuery(ghtor, projects) 
 
-#write_csv(x, "~/emc_github_project/top_organizations.csv")
-#write_csv(org_mem3, "~/emc_github_project/members.csv")
+
+project_commits = dbGetQuery(ghtor, paste0(c('select * from project_commits where project_id in ', "('", top_10, "')"), collapse = "")) 
+
+repo_labels = dbGetQuery(ghtor, "select * from project_languages where project_id = '2067195'") 
+
+
+pull_requests = dbGetQuery(ghtor, paste0(c('select * from pull_requests where base_repo_id in ', "('", top_10, "')"), collapse = "")) 
+
+
+commits = dbGetQuery(ghtor, paste0(c('select * from commits where project_id in ', "('", top_10, "')"), collapse = ""))  #не у всех проектов есть коммиты
+
 
 ```
+
+
+По юзерам
+```{r}
+users_new = paste(c(members$user_id[1:100]), collapse = "','")
+
+u_commits = dbGetQuery(ghtor, paste0(c('select * from commits where committer_id in ', "('", users_new, "')"), collapse = ""))
+```
+
 
