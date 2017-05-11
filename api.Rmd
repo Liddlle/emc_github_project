@@ -1,106 +1,42 @@
-"https://api.github.com/repos/RcppCore/Rcpp" 
-```{r}
-source("~/emc_github_project/start.R")
-rc_id = project$id[1]
-rc_id
-rc = my_db %>% tbl("projects") %>% filter(forked_from == rc_id) %>% as.data.frame()
-rc_forked2 = paste(c(rc$id), collapse = "','")
-rc_forked2 = dbGetQuery(ghtor, paste0(c('select * from projects where forked_from in ', "('", rc_forked2, "')"), collapse = "")) #112/114 проектов смогла найти 
-  
-#292 реквесты 
-rc_request = my_db %>% tbl("pull_requests") %>% 
-    filter(head_repo_id == "6209178" | base_repo_id == "6209178") %>% 
-    as.data.frame()
-
-rc_request_hist = my_db %>% tbl("pull_request_history") %>% 
-    filter(pull_request_id %in% rc_request$id) %>% 
-    as.data.frame()
-rc_request_hist$created_at = ymd_hms(rc_request_hist$created_at)
-
-rc_request_hist_temp = rc_request_hist %>% group_by(pull_request_id, action) %>% dplyr::summarise(created_at = min(created_at))
-
-rc_request_hist = left_join(rc_request_hist_temp, rc_request_hist)
-
-normalit<-function(m){
-  (m - min(m))/(max(m)-min(m))
-}
-
-a = normalit(df$diff)
-
-
-temp = rc_request_hist %>% filter(action == "opened") %>% group_by(actor_id) %>% tally() # %>% filter(n>4)
-temp = pull_history %>% filter((actor_id %in% temp$actor_id)) # & action == "merged")
-temp = pull_history %>% filter(pull_request_id %in% temp$pull_request_id)
-
-rc_request_hist$created_at = ymd_hms(rc_request_hist$created_at)
-
-df = data_frame()
-for (i in rc_request_hist$pull_request_id) {
-  a = rc_request_hist %>% filter(pull_request_id == 2449294)
-  a$created_at = as.numeric(a$created_at)
-  if (a$actor_id[a$action=="closed"]>0) {
-  a_new = data_frame(actor_id = a$actor_id[a$action=="opened"], 
-                     diff = a$created_at[a$action=="closed"]-a$created_at[a$action=="opened"])
-  df = rbind(a_new, df)
-  }}
-
-
-rc_commits =  my_db %>% tbl("project_commits") %>% 
-    filter(project_id == "6209178") %>% 
-    as.data.frame()
-
-rc_request_commits
-
-pull_history_actors = df %>% group_by(actor) %>% summarise()
-del = left_join(pull_history2, pull_history_actors)  %>% group_by(actor_opened) %>% tally() %>% arrange(-n)
-del$type = ifelse(del$n > 3 & del$n < 10, "middlle" , del$n)
-del$type = ifelse(del$n > 9 & del$n < 21, "upper-middlle" , del$type)
-del$type = ifelse(del$n > 20, "core" , del$type) 
-
-
-
-
-
-merged = subset(rc_request_hist, !(actor_id %in% rc_request_hist$actor_id[rc_request_hist$action == "merged" ]))
-merged$created_at = ymd_hms(merged$created_at)
-
-issues = my_db %>% tbl("issues") %>% 
-    filter(repo_id == "6209178") %>% 
-    as.data.frame()
-
-```
-Client ID
-7d46b74499a2c1075b45
-Client Secret
-a9568ff92b8d6b05a6099b47f0d6a65d8c2a2e24
-
-
-
 ```{r}
 library(jsonlite)
 library(httpuv)
 library(httr)
-
-# Can be github, linkedin etc depending on application
-oauth_endpoints("github")
-
-# Change based on what you 
+library(dplyr)
 myapp <- oauth_app(appname = "Github for socinfo",
                    key = "7d46b74499a2c1075b45",
                    secret = "a9568ff92b8d6b05a6099b47f0d6a65d8c2a2e24")
 
-# Get OAuth credentials
-github_token <- oauth2.0_token(oauth_endpoints("github"), myapp)
+req <- GET("https://api.github.com/repos/RcppCore/Rcpp/commits?page=100", github_token)
+json1 = content(req)
+gitDF = jsonlite::fromJSON(jsonlite::toJSON(json1))
 
-# Use API
-gtoken <- config(token = github_token)
-req <- GET("https://api.github.com/users/jtleek/repos", gtoken)
+repos = GET("https://api.github.com/repos/RcppCore/Rcpp", github_token)
+repos = content(repos)
+repos = jsonlite::fromJSON(jsonlite::toJSON(repos, recursive = TRUE), flatten = TRUE)
+repos2 = repos %>% select(-owner, -organization)
+repos2 = sapply(repos, unlist) %>% 
 
-# Take action on http error
-stop_for_status(req)
-
-н
-# Subset data.frame
-gitDF[gitDF$full_name == "jtleek/datasharing", "created_at"] 
+commits = data.frame()
+for (i in 1:150) {
+  link = paste("https://api.github.com/repos/RcppCore/Rcpp/commits?page=", i, sep = "")
+  temp <- GET(link, github_token)
+  js = content(temp)
+  if (length(js)>0) {
+    commits_temp = jsonlite::fromJSON(jsonlite::toJSON(js, recursive = TRUE), flatten = TRUE)
+    parents = commits_temp %>% select(parents) %>% as.character()
+    commits_temp2 = commits_temp %>% select(-parents)
+    commits_temp2 = sapply(commits_temp2, unlist)
+    commits_temp2 = cbind(commits_temp2, parents) %>% as.data.frame()
+    commits = rbind(commits, commits_temp)
+    Sys.sleep(1.5)
+  } else {
+    break
+  }
+}
+commits = unlist(commits2[1])
+commits2 = commits$commit$author
+  
 ```
 
+  

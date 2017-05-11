@@ -4,3 +4,4 @@
 .Ruserdata
 .httr-oauth
 r_id_projects.csv
+.gitignore

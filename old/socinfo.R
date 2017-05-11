@@ -3,8 +3,6 @@
 my_db = src_mysql("ghtorrent", host = "127.0.0.1", port = 33306, user = "ght", password = "")
 
 source("~/emc_github_project/start.R")
-library(dplyr)
-library(stringr)
 ```
 
 
@@ -25,9 +23,99 @@ url_proj = str_c("https://api.github.com/repos/", top_10)
 #paste("'https://api.github.com/repos/", top_10, "'", collapse = ", ", sep = "")
 
 
-pull_history = my_db %>% tbl("pull_request_history") %>% 
-    filter(pull_request_id %in% pull_rec$pull_request_id) %>% 
+
+```
+
+
+
+```{r}
+#строчка снизу не работает)))))))00
+projects = data.frame()
+for (i in url_proj) {
+  tmp = dbGetQuery(ghtor, paste0("select * from projects where url = '", i, "'"))
+  projects = rbind(projects, tmp)
+}
+
+#r_id_project = projects$id
+r_ids = paste0("'", projects$id, "'", collapse = ", ", sep = "")  
+
+
+```
+
+skip
+```{r}
+
+forked = data.frame() #curl - 0
+for (i in projects$id) {
+  tmp2 = dbGetQuery(ghtor, paste0("select * from projects where forked_from = '", i, "'"))
+  forked = rbind(forked, tmp2)
+  Sys.sleep(5)
+}
+
+
+forked2 = forked %>% group_by(name) %>% tally() %>% filter(n > 1)
+```
+
+
+
+```{r}
+
+pull_requests = data.frame() 
+for (i in projects$id) {
+  tmp3 = my_db %>% tbl("pull_requests") %>% 
+    filter(base_repo_id == i) %>% 
     as.data.frame()
+  pull_requests = rbind(pull_requests, tmp3)
+  Sys.sleep(1)
+}
+
+pull_id = paste(c(pull_requests$id), collapse = "','")
+test = paste0("select * from pull_requests where base_repo_id in (", r_ids, ") and id not in ('", pull_id, "')", collapse = "")
+pull_requests2 = dbGetQuery(ghtor, test)
+
+
+pull_requests_head = data.frame() 
+for (i in projects$id) {
+  tmp3 = my_db %>% tbl("pull_requests") %>% 
+    filter(head_repo_id == i) %>% 
+    as.data.frame() #dbGetQuery(ghtor, paste0("select * from pull_requests where head_repo_id = '", i, "'"))
+  pull_requests_head = rbind(pull_requests_head, tmp3)
+  Sys.sleep(5)
+}
+
+#pull_requests = dbGetQuery(ghtor, paste0(c('select * from pull_requests where base_repo_id in ', "(", r_ids, ")"), collapse = "")) 
+#pull_requests_head = dbGetQuery(ghtor, paste0(c('select * from pull_requests where head_repo_id in ', "(", r_ids, ")"), collapse = ""))
+
+commits =  my_db %>% tbl("project_commits") %>% 
+  filter(project_id == "6209178") %>% 
+  as.data.frame()
+
+commits2 = data.frame() 
+for (l in projects$id) {
+  tmp3 = my_db %>% tbl("project_commits") %>% 
+    filter(project_id == l) %>% 
+    as.data.frame()
+  commits2 = plyr::rbind.fill(commits2, tmp3)
+}
+commits2 %>% group_by(project_id) %>% tally()
+
+#commits = dbGetQuery(ghtor, 'select author_id from commits where project_id = "6209178" group by author_id')
+x = "1382617"#dbGetQuery(ghtor, 'select count(id) from commits where project_id = "49642088"')
+
+
+```
+
+```{r}
+pull_rec = my_db %>% tbl("pull_request_commits") %>% 
+  filter(commit_id %in% commits2$commit_id) %>% 
+  as.data.frame()
+
+#pull_id = paste(c(pull_requests$id), collapse = "','")
+#dbGetQuery(ghtor, paste0(c('select * from pull_request_history where pull_request_id in ', "('", pull_id, "')"), collapse = "")) 
+
+pull_history = my_db %>% tbl("pull_request_history") %>% 
+  filter(pull_request_id %in% pull_rec$pull_request_id) %>% 
+  as.data.frame()
 pull_history$created_at = ymd_hms(pull_history$created_at)
 
 library(reshape2)
