@@ -1,0 +1,162 @@
+```{r}
+#ssh -i ~/.ssh/id_rsa -L 33306:web.ghtorrent.org:3306 ghtorrent@web.ghtorrent.org
+
+source("~/emc_github_project/start.R")
+```
+%https://pypi.python.org/pypi/
+
+Анализ пакетов r 
+достаю репозитории
+смотрю кто watch, commit, pull request, issue close, comment, 
+как membership устроено в плане орг не орг
+как принимают новичков в сообществе
+
+Currently, the CRAN package repository features 10494 available packages.
+The Python Package Index is a repository of software for the Python programming language. There are currently 106839 packages here.
+
+
+```{r}
+#dbGetQuery(ghtor, 'select COUNT(*) from projects where language = "python"') #2.9 млн
+
+library(githubinstall)
+r_urls = gh_list_packages()
+#https://api.github.com/repos/RomanBi/accrued
+r_urls = r_urls %>% mutate(url = paste("https://api.github.com/repos/", username, "/", package_name, sep = ""))
+r_urls = r_urls %>% mutate(url_normal = paste("https://github.com/", username, "/", package_name, sep = ""))
+url_proj = paste0("'", r_urls$url, "'", collapse = ", ", sep = "")
+
+
+```
+
+Для одного пакета хедлей
+```{r}
+temp0 = dbGetQuery(ghtor, 'select * from projects where url = "https://api.github.com/repos/hadley/dplyr"') 
+
+#найти тех, кто форкнул этот проект 
+forked = dbGetQuery(ghtor, 'select * from projects where forked_from = "1382617"')
+#watchers
+
+pull_requests = dbGetQuery(ghtor, 'select * from pull_requests where base_repo_id = "1382617"')
+pull_requests_head = dbGetQuery(ghtor, 'select * from pull_requests where head_repo_id = "1382617"')
+commits = dbGetQuery(ghtor, 'select * from commits where project_id = "1382617"') #3858 коммитов на один пакет 
+pull_id = paste(c(pull_requests$id), collapse = "','")
+pull_history = dbGetQuery(ghtor, paste0(c('select * from pull_request_history where pull_request_id in ', "('", pull_id, "')"), collapse = "")) 
+
+temp0 = pull_history %>% filter(action == "merged")
+temp = subset(pull_history, !(actor_id %in% temp0$actor_id))
+temp= temp %>% filter(action == "opened") %>% group_by(actor_id) %>% tally() %>% filter(n>4)
+temp = pull_history %>% filter((actor_id %in% temp$actor_id)) # & action == "merged")
+temp = pull_history %>% filter(pull_request_id %in% temp$pull_request_id)
+
+df = data_frame()
+for (i in temp$pull_request_id) {
+  a = temp %>% filter(pull_request_id == 2472769)
+  a$created_at = as.numeric(a$created_at)
+  a_new = data_frame(actor_id = a$actor_id[a$action=="opened"], 
+                     diff = a$created_at[a$action=="closed"]-a$created_at[a$action=="opened"])
+  }
+
+
+for_graph = temp %>% arrange(pull_request_id)
+
+
+
+issues = dbGetQuery(ghtor, 'select * from issues where repo_id = "1382617"')
+
+r_projects$wave = rep(1:8)
+projects = data.frame()
+for (i in 1:8) {
+  temp = r_projects %>% filter(wave == i)
+  id_proj = paste(c(temp$project_id), collapse = "','")
+  temp = dbGetQuery(ghtor, paste0(c('select project_id,language from project_languages where project_id in ', "('", id_proj, "')"), collapse = "")) 
+  temp = temp %>% unique()
+  projects = plyr::rbind.fill(projects, temp)
+  Sys.sleep(5)
+}
+
+
+
+#write_csv(r_packages, "~/emc_github_project/r_packages.csv")
+```
+
+
+
+Для тайдиверс
+```{r}
+#строчка снизу не работает)))))))00
+temp = dbGetQuery(ghtor, paste0(c('select * from projects where url in ', "(", url_proj, ")"), collapse = "")) 
+r_id_project = temp
+
+not_found = subset(r_urls, !(url %in% r_id_project$url))
+not_found = paste0("'", not_found$url, "'", collapse = ", ", sep = "")  
+ids = dbGetQuery(ghtor, paste0(c('select * from projects where url in ', "(", not_found, ")"), collapse = "")) 
+r_id_project = rbind(r_id_project, ids)
+#write_csv(r_id_project, "r_id_project.csv") #не все проекты в ито
+
+
+###############################тем временем оставим только по хадлей 
+hadley = r_urls %>% filter(username == "hadley") #97 пакетов
+hadley_id = paste0("'", hadley$url, "'", collapse = ", ", sep = "")  
+ids = dbGetQuery(ghtor, paste0(c('select * from projects where url in ', "(", hadley_id, ")"), collapse = "")) 
+
+r_ids = paste0("'", ids$id, "'", collapse = ", ", sep = "")  
+
+forked = dbGetQuery(ghtor, paste0(c('select * from projects where forked_from in ', "(", r_ids, ")"), collapse = "")) #4878
+forked2 = forked %>% group_by(name) %>% tally() %>% filter(n > 9)
+
+hadley_new = ids %>% filter(name %in% forked2$name)
+forked_new = forked %>% filter(name %in% forked2$name)
+
+#r_ids = paste0("'", forked_new$id, "'", collapse = ", ", sep = "")  
+r_ids = paste0("'", hadley_new$id, "'", collapse = ", ", sep = "")  
+
+```
+
+
+
+```{r}
+
+
+pull_requests = dbGetQuery(ghtor, paste0(c('select * from pull_requests where base_repo_id in ', "(", r_ids, ")"), collapse = "")) 
+pull_requests_head = dbGetQuery(ghtor, paste0(c('select * from pull_requests where head_repo_id in ', "(", r_ids, ")"), collapse = ""))
+
+commits = dbGetQuery(ghtor, 'select * from commits where project_id = "1382617"') #3858 коммитов на один пакет 
+
+pull_id = paste(c(pull_requests$id), collapse = "','")
+pull_history = dbGetQuery(ghtor, paste0(c('select * from pull_request_history where pull_request_id in ', "('", pull_id, "')"), collapse = "")) 
+
+library(reshape2)
+pull_history_actors = pull_history %>% filter(action == "opened") %>% select(pull_request_id, actor_opened = actor_id) 
+pull_history2 = pull_history %>% dplyr::select(-actor_id, -id) %>% filter(action == "opened" | action == "closed") 
+#del = pull_history2 %>% group_by(pull_request_id) %>% tally() %>% filter(n>3)
+#pull_history2 = subset(pull_history2,  !(pull_request_id %in% del$pull_request_id))
+pull_history2 =  dcast(data = pull_history2, pull_request_id~action, value.var="created_at", fun.aggregate = min) 
+
+del = left_join(pull_history2, pull_history_actors)  %>% group_by(actor_opened) %>% tally() %>% arrange(-n)
+del$type = ifelse(del$n > 3 & del$n < 10, "middlle" , del$n)
+del$type = ifelse(del$n > 9 & del$n < 21, "upper-middlle" , del$type)
+del$type = ifelse(del$n > 20, "core" , del$type) 
+
+pull_history2 = na.omit(pull_history2)##удаляем все незакрытые кейсы
+pull_history_actors = left_join(pull_history_actors, del %>% select(-n))
+pull_history3 = left_join(pull_history2, pull_history_actors)
+
+pull_history3 = pull_history3 %>% mutate(diff = (ymd_hms(closed) - ymd_hms(opened))/3600)
+pull_history3$diff2 = round(as.numeric( as.character(pull_history3$diff)),2)
+
+ggplot(data = pull_history3, aes(x = factor(type), y = diff)) + geom_boxplot() + ylim(0,5000)
+ggplot(data = pull_history3, aes(x = factor(type), y = log(diff2))) + geom_boxplot()
+
+wilcox.test(pull_history3$diff2[pull_history3$type==1], pull_history3$diff2[pull_history3$type=="core"])
+wilcox.test(pull_history3$diff2[pull_history3$type=="middlle"], pull_history3$diff2[pull_history3$type=="core"])
+pull_history3 %>% group_by(type) %>% summarise(n = n(), mean = mean(diff2), median = median(diff2))
+
+temp0 = pull_history %>% filter(action == "merged")
+temp = subset(pull_history, !(actor_id %in% temp0$actor_id))
+temp= temp %>% filter(action == "opened") %>% group_by(actor_id) %>% tally() %>% filter(n>4)
+temp = pull_history %>% filter((actor_id %in% temp$actor_id)) # & action == "merged")
+temp = pull_history %>% filter(pull_request_id %in% temp$pull_request_id)
+
+
+```
+

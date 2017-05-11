@@ -1,64 +1,25 @@
-```{bash}
-#ssh -i ~/.ssh/id_rsa -L 33306:web.ghtorrent.org:3306 ghtorrent@web.ghtorrent.org
-#ps axuf | grep ssh
-#mysql -u ght -h 127.0.0.1 -P 33306 ghtorrent
-```
-
-
 ```{r}
-library("ggplot2")
-library("readr")
-library("reshape2")
-library("dplyr")
-library("RMySQL")
-#library(sqldf)
-#library(optparse)
-#library(knitr)
-#library("foreach")
-#library("doMC")
-
-require(devtools)
-
+source("~/emc_github_project/start.R")
 ```
+
 
 * Создать базу с топ-50 организаций + их проекты и участники 
 * Посмотреть библиотеки для  больших данных в р 
 * Длина обработки реквестов и "важность" или вовлеченность участника 
 * Подумать как можно выделять основных участников (core) проекта
 
-```{r}
-#rm(list = ls(all = TRUE))
-
-mysql.user   =  "ght"
-mysql.passwd = ""
-mysql.db     = "ghtorrent"
-mysql.host   = "127.0.0.1"
-mysql.port = 33306
-paralll      = 4
-
-ghtor = dbConnect(dbDriver("MySQL"),
-          user = mysql.user,
-          password = mysql.passwd,
-          dbname = mysql.db,
-          host = mysql.host,
-          port = mysql.port)
-
-#dbClearResult(dbListResults(ghtor)[[1]])
-dbListFields(ghtor,"projects")
-dbListTables(ghtor)
-```
-
-
 ###Selecting members of top-10 organizations
 ```{r}
 #топ 50 организаций по кол-ву участников  
 top_organizations = dbGetQuery(ghtor, "select org_id, COUNT(*) as total_m from organization_members group by org_id order by total_m DESC limit 50") %>% 
   arrange(desc(total_m)) 
+top_organizations = my_db %>% tbl("organization_members") %>% group_by(org_id) %>% summarise(total_m = n()) %>% arrange(desc(total_m)) %>% top_n(10)
+top_organizations$org_id
 
 top_10 = paste(c(top_organizations[1:10,1]), collapse = "','")
 
 #get organizations' names
-#dbGetQuery(ghtor, paste0(c('select id,login from users where id in ', "('", top_10, "')"), collapse = ""))
+dbGetQuery(ghtor, paste0(c('select id,login from users where id in ', "('", top_10, "')"), collapse = ""))
 
 
 members = paste0(c('select * from organization_members where org_id in ', "('", top_10, "')"), collapse = "")
@@ -81,11 +42,14 @@ project_commits = dbGetQuery(ghtor, paste0(c('select * from project_commits wher
 
 
 commits = dbGetQuery(ghtor, paste0(c('select * from commits where project_id in ', "('", top_10, "')"), collapse = ""))  #не у всех проектов есть коммиты
+
+#top users by number of commits
 ```
 
 
 
 ###Forming users' profiles on the example of Azure project  
+####Commits
 ```{r}
 azure_users = dbGetQuery(ghtor, 'select * from organization_members where org_id = "3681780"')
 azure_users = paste(c(azure_users$user_id), collapse = "','")
@@ -104,9 +68,10 @@ profiles = profiles %>% group_by(author_id, commit_in_azure) %>% summarise(n_com
 profiles = dcast(profiles, author_id ~ commit_in_azure, value.var = 'n_commits') 
 profiles[is.na(profiles)] = 0
 
+```
 
-
-#добавить используемые языки 
+####Languages
+```{r}
 users_projects = users_commits %>% group_by(project_id) %>% tally() 
 users_projects = paste(c(users_projects$project_id), collapse = "','")  
 
@@ -119,30 +84,42 @@ users_lang2 = users_lang2 %>% na.omit() %>% group_by(committer_id, lang) %>% tal
 
 users_lang2 = data.table::setDT(users_lang2)[, lapply(.SD, function(x) unlist(strsplit(as.character(x), ', '))), .SDcols = "lang", by = c("committer_id", "n")]
 users_lang2 = users_lang2 %>% group_by(committer_id, lang) %>% summarise(num_use = sum(n))
+```
 
-
-
-#request activity 
+###Pull requests 
+```{r}
 #number of pull requests by user / total num in project 
-users_pull_requests = dbGetQuery(ghtor, paste0(c('select * from pull_requests where base_repo_id in ', "('", users_projects, "')"), collapse = "")) 
+azure_pull_requests = dbGetQuery(ghtor, paste0(c('select * from pull_requests where base_repo_id in ', "('", users_projects, "')"), collapse = "")) 
+users_pull_requests = dbGetQuery(ghtor, paste0(c('select * from pull_request_history where actor_id in ', "('", azure_users, "')"), collapse = "")) 
 
 
-request = users_pull_requests
+request = azure_pull_requests
 
 #не уверена, что нужно брать base_repo_id
 request$request_in_azure = ifelse(request$base_repo_id %in% azure_projects$id, "request_in_azure", "request_others")
+request$request_in_azure_head = ifelse(request$head_repo_id %in% azure_projects$id, "request_in_azure", "request_others")
 
-request = request %>% group_by(author_id, request_in_azure) %>% summarise(n_commits = n()) %>% select()
-request = dcast(request, author_id ~ request_in_azure, value.var = 'n_commits') 
+
+#у реквестов data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAkAAAAJCAYAAADgkQYQAAAAMElEQVR42mNgIAXY2Nj8x8cHC8AwMl9XVxe3QqwKcJmIVwFWhehW4LQSXQCnm3ABAHD6MDrmRgfrAAAAAElFTkSuQmCCнапрямую не указаны его зачинатели
+request_ids = paste(c(request$id), collapse = "','")
+requests_creators = dbGetQuery(ghtor, paste0(c('select * from pull_request_history where action = "opened" and pull_request_id in ', "('", request_ids, "')"), collapse = "")) #возможно часть инфы будет уходить из-за типа действия
+
+request = left_join(select(request, pull_request_id = id, base_repo_id,request_in_azure), select(requests_creators, pull_request_id, author_id = actor_id))
+
+request = request %>% group_by(author_id, request_in_azure) %>% summarise(n_requests = n()) 
+request = dcast(request, author_id ~ request_in_azure, value.var = 'n_requests') 
 request[is.na(request)] = 0
 
-#позже то же самое только для коммитов сделаю 
+profiles = inner_join(profiles, request)
+#в процентах от общего числа коммитов и реквестов  проекте 
 
 #smth with time
+
 ```
 
 
 
-попробовать переделать с dplyr
-my_db <- src_mysql("ghtorrent", host = '127.0.0.1', port = 33306, user = "ght", password = "")
+```{r}
 
+
+```
