@@ -1,4 +1,6 @@
+library(dplyr)
 library(githubinstall)
+library(stringr)
 r_urls = gh_list_packages()
 r_urls = r_urls %>% 
   mutate(url = paste("https://api.github.com/repos/", username, "/", package_name, sep = ""))
@@ -14,8 +16,13 @@ r_50 = r_50 %>% arrange(-Total)# %>% top_n(10)
 
 r_urls1 = r_urls %>% filter(package_name %in% r_50$Name) %>% filter(username != "tidyverse")
 r_urls2 = r_urls %>% filter(package_name %in% r_50$Name) %>% subset(!(package_name %in% repo_r$name))
-u = r_urls$url[10]
+left = r_50 %>% subset(!(Name %in% repo_r$name))
+
+#у 8 проектов из топа 50 нет репозиториев на гитхабе
+#jeroenooms/stringi ---> gagolews/stringi добавила отдельно 
 #stringi not found
+
+#u = "https://api.github.com/repos/gagolews/stringi" #r_urls2$url[1]
 #repo_r = data.frame()
 for (u in r_urls2$url[27:nrow(r_urls2)]) {
   repos = GET(u, github_token)
@@ -50,6 +57,8 @@ for (u in r_urls2$url[27:nrow(r_urls2)]) {
   }
   
   repos_final = plyr::rbind.fill(repos2, repos_owner, repos_permission, repos_org, repos_desc, repos_parent)
+  #для readxl
+  #repos_final = repos_final[-105,]
   repos_final = t(repos_final)
   colnames(repos_final) = repos_final[1,] 
   repos_final = as.data.frame(repos_final)
@@ -58,30 +67,65 @@ for (u in r_urls2$url[27:nrow(r_urls2)]) {
   repo_r = plyr::rbind.fill(repo_r, repos_final)
   Sys.sleep(1)
 }
-
+library(readr)
+write_csv(repo_r, "repo_r.csv")
 
 #commits = data.frame()
 commits2 = data.frame()
 r_url = repo_r %>% filter(full_name != "Rcpp")
 r_url = r_url$full_name %>% as.character()
-for (y in r_url) {
-for (i in 1:150) {
-  link = paste("https://api.github.com/repos/", y, "/commits?page=", i, sep = "")
-  temp <- GET(link, github_token)
-  js = content(temp)
-  if (length(js)>0) {
-    commits_temp = jsonlite::fromJSON(jsonlite::toJSON(js, recursive = TRUE), flatten = TRUE)
-    parents = commits_temp %>% select(parents) %>% as.character()
-    commits_temp2 = commits_temp %>% select(-parents)
-    commits_temp2 = sapply(commits_temp2, unlist)
-    commits_temp2 = cbind(commits_temp2, parents) %>% as.data.frame()
-    commits2 = rbind(commits2, commits_temp)
-    Sys.sleep(1.5)
-  } else {
-    next
-  }
-}}
 
-commits = unlist(commits2[1])
+for (y in r_url[]) {
+  for (i in 1:150) {
+    link = paste("https://api.github.com/repos/", y, "/commits?page=", i, sep = "")
+    temp <- GET(link, github_token)
+    js = content(temp)
+    if (length(js)>0) {
+      commits_temp = jsonlite::fromJSON(jsonlite::toJSON(js, recursive = TRUE), flatten = TRUE)
+      parents = commits_temp %>% select(parents) %>% as.character()
+      commits_temp2 = commits_temp %>% select(-parents)
+      commits_temp2 = sapply(commits_temp2, unlist)
+      commits_temp2 = cbind(commits_temp2, parents) %>% as.data.frame()
+      commits2 = rbind(commits2, commits_temp)
+      Sys.sleep(1.5)
+    } else {
+      next
+    }}
+  }
+
+commits3 = data.frame()
+r_url = repo_r %>% filter(full_name != "Rcpp")
+r_url = r_url$full_name %>% as.character()
+
+y = 8
+i = 1
+for (y in r_url[42:56]) {
+  for (i in 1:150) {
+    link = paste("https://api.github.com/repos/", y, "/commits?page=", i, sep = "")
+    temp <- GET(link, github_token)
+    js = content(temp)
+    if (length(js)>0) {
+      commits_temp = jsonlite::fromJSON(jsonlite::toJSON(js, recursive = TRUE), flatten = TRUE)
+      commits_temp2 = data.frame(
+        sha = commits_temp$sha %>% unlist(),
+        url = commits_temp$url %>% unlist(),
+        date = commits_temp$commit.author.date %>% unlist()
+      ) 
+      if (nrow(commits_temp2)>1) {
+      commits3 = plyr::rbind.fill(commits3, commits_temp)}
+      Sys.sleep(1.5)
+    } else {
+      break
+    }}
+print(y)}
+write_csv(commits, "commits_simplified.csv")
+#data.table проверить
+commits = unlist(commits3[1])
+commits = data.frame(
+  sha = commits3$sha %>% unlist(),
+  url = commits3$url %>% unlist(),
+  date = commits3$commit.author.date %>% unlist()
+) 
 commits2 = commits$commit$author
+
 

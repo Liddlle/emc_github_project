@@ -1,4 +1,6 @@
 ```{r}
+tools::CRAN_package_db()
+
 library(jsonlite)
 library(httpuv)
 library(httr)
@@ -7,15 +9,30 @@ myapp <- oauth_app(appname = "Github for socinfo",
                    key = "7d46b74499a2c1075b45",
                    secret = "a9568ff92b8d6b05a6099b47f0d6a65d8c2a2e24")
 
-req <- GET("https://api.github.com/repos/RcppCore/Rcpp/commits?page=100", github_token)
-json1 = content(req)
-gitDF = jsonlite::fromJSON(jsonlite::toJSON(json1))
-
-repos = GET("https://api.github.com/repos/RcppCore/Rcpp", github_token)
+repos = GET("https://api.github.com/repos/0xh3x/hellodublinr", github_token)
 repos = content(repos)
 repos = jsonlite::fromJSON(jsonlite::toJSON(repos, recursive = TRUE), flatten = TRUE)
-repos2 = repos %>% select(-owner, -organization)
-repos2 = sapply(repos, unlist) %>% 
+repos2 =  plyr::ldply(repos[c(1:3,5:63, 65:69, 72:73)], cbind)
+repos2 = repos[subset(names(repos), !(names(repos) %in% (c("owner", "permissions", "org", "homepage", "mirror_url"))))]
+repos2 =  plyr::ldply(repos2, cbind)
+repos["network_count"]
+repos_owner = plyr::ldply(repos$owner, cbind) 
+repos_owner$.id = paste("owner_", repos_owner$.id, sep = "")
+
+repos_permission = plyr::ldply(repos$permissions, cbind)
+repos_permission$.id = paste("permissions_", repos_permission$.id, sep = "")
+
+repos_org =  plyr::ldply(repos$organization, cbind) 
+repos_org$.id = paste("org_", repos_org$.id, sep = "")
+
+repos_final2 = rbind(repos2, repos_owner, repos_permission, repos_org)
+repos_final2 = t(repos_final2)
+colnames(repos_final2) = repos_final2[1,] 
+repos_final2 = as.data.frame(repos_final2)
+repos_final2 = repos_final2[-1,] %>% as.data.frame()
+
+library(purrr)
+
 
 commits = data.frame()
 for (i in 1:150) {
@@ -37,6 +54,9 @@ for (i in 1:150) {
 commits = unlist(commits2[1])
 commits2 = commits$commit$author
   
+
+#issues 
+
 ```
 
   
