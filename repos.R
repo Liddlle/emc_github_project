@@ -1,6 +1,14 @@
 library(dplyr)
+library(readr)
 library(githubinstall)
 library(stringr)
+library(tidyjson)
+library(httpuv)
+library(httr)
+myapp <- oauth_app(appname = "Github for socinfo",
+                   key = "7d46b74499a2c1075b45",
+                   secret = "a9568ff92b8d6b05a6099b47f0d6a65d8c2a2e24")
+
 r_urls = gh_list_packages()
 r_urls = r_urls %>% 
   mutate(url = paste("https://api.github.com/repos/", username, "/", package_name, sep = ""))
@@ -9,16 +17,17 @@ r_urls = r_urls %>%
 url_proj = paste0("'", r_urls$url, "'", collapse = ", ", sep = "")
 
 r_50 <- read_csv("~/emc_github_project/r_50.csv")
+#r_50 <- read_csv("~/emc_github_project/all_packages.csv")
 library(stringr)
 r_50$Name = enc2utf8(r_50$Name)
-r_50$Name = sapply(str_split(r_50$Name,"�"),'[',2)
+r_50$Name = sapply(str_split(r_50$Name," "),'[',2)
 r_50 = r_50 %>% arrange(-Total)# %>% top_n(10)
 
-r_urls1 = r_urls %>% filter(package_name %in% r_50$Name) %>% filter(username != "tidyverse")
-r_urls2 = r_urls %>% filter(package_name %in% r_50$Name) %>% subset(!(package_name %in% repo_r$name))
-left = r_50 %>% subset(!(Name %in% repo_r$name))
+r_urls2 = r_urls %>% filter(package_name %in% r_50$Name) #%>% subset(!(package_name %in% repo_r$name))
+#left = r_50 %>% subset(!(Name %in% repo_r$name))
 
-#у 8 проектов из топа 50 нет репозиториев на гитхабе
+unique(r_urls2$package_name) %>% length()
+
 #jeroenooms/stringi ---> gagolews/stringi добавила отдельно 
 #stringi not found
 
@@ -26,79 +35,20 @@ left = r_50 %>% subset(!(Name %in% repo_r$name))
 #repo_r = data.frame()
 for (u in r_urls2$url[27:nrow(r_urls2)]) {
   repos = GET(u, github_token)
-  repos = content(repos)
-  repos = jsonlite::fromJSON(jsonlite::toJSON(repos, recursive = TRUE), flatten = TRUE)
-  #repos2 =  tryCatch((plyr::ldply(repos[c(1:3,5:63, 65:69, 72:73)], cbind)), error = function() next)
-  repos2 = subset(repos, !(names(repos) %in% c("owner","parent","source",   "homepage", "mirror_url", "permissions", "organization", "description")))
-  repos2 = plyr::ldply(repos2, cbind)
+  repos2 = content(repos, "text")
+  repos3 = repos2 %>% spread_all
   
-  if (repos$parent  %>% is.null() == FALSE) {
-    repos_parent = data.frame(.id = "parent", `1` = repos$parent$full_name)
-    names(repos_parent)[2] = 1
-    }
-  
-  
-  repos_desc = plyr::ldply(repos$description, cbind) 
-  if (repos_desc$`1`  %>% is.null() == FALSE) {
-    if (nrow(repos_desc)==1) {
-      repos_desc$.id = "description"
-    #} else { repos_desc$.id = paste("desc_", repos_desc$.id, sep = "")
-    }}
-  
-  repos_owner = plyr::ldply(repos$owner, cbind) 
-  repos_owner$.id = paste("owner_", repos_owner$.id, sep = "")
-  
-  repos_permission = plyr::ldply(repos$permissions, cbind)
-  repos_permission$.id = paste("permissions_", repos_permission$.id, sep = "")
-  
-  repos_org =  plyr::ldply(repos$organization, cbind) 
-  if (repos_org$.id  %>% is.null() == FALSE) {
-    repos_org$.id = paste("org_", repos_org$.id, sep = "")
-  }
-  
-  repos_final = plyr::rbind.fill(repos2, repos_owner, repos_permission, repos_org, repos_desc, repos_parent)
-  #для readxl
-  #repos_final = repos_final[-105,]
-  repos_final = t(repos_final)
-  colnames(repos_final) = repos_final[1,] 
-  repos_final = as.data.frame(repos_final)
-  repos_final = repos_final[-1,] %>% as.data.frame()
-  
-  repo_r = plyr::rbind.fill(repo_r, repos_final)
-  Sys.sleep(1)
+  repo_r = plyr::rbind.fill(repo_r, repos3)
+  Sys.sleep(1.2)
 }
+
 library(readr)
 write_csv(repo_r, "repo_r.csv")
 
+r_url = r_url$full_name %>% as.character()
 #commits = data.frame()
-commits2 = data.frame()
-r_url = repo_r %>% filter(full_name != "Rcpp")
-r_url = r_url$full_name %>% as.character()
-
-for (y in r_url[]) {
-  for (i in 1:150) {
-    link = paste("https://api.github.com/repos/", y, "/commits?page=", i, sep = "")
-    temp <- GET(link, github_token)
-    js = content(temp)
-    if (length(js)>0) {
-      commits_temp = jsonlite::fromJSON(jsonlite::toJSON(js, recursive = TRUE), flatten = TRUE)
-      parents = commits_temp %>% select(parents) %>% as.character()
-      commits_temp2 = commits_temp %>% select(-parents)
-      commits_temp2 = sapply(commits_temp2, unlist)
-      commits_temp2 = cbind(commits_temp2, parents) %>% as.data.frame()
-      commits2 = rbind(commits2, commits_temp)
-      Sys.sleep(1.5)
-    } else {
-      next
-    }}
-  }
-
-commits3 = data.frame()
-r_url = repo_r %>% filter(full_name != "Rcpp")
-r_url = r_url$full_name %>% as.character()
-
-y = 8
-i = 1
+#y = 8
+#i = 1
 for (y in r_url[42:56]) {
   for (i in 1:150) {
     link = paste("https://api.github.com/repos/", y, "/commits?page=", i, sep = "")
@@ -118,8 +68,11 @@ for (y in r_url[42:56]) {
       break
     }}
 print(y)}
+
 write_csv(commits, "commits_simplified.csv")
+
 #data.table проверить
+
 commits = unlist(commits3[1])
 commits = data.frame(
   sha = commits3$sha %>% unlist(),
