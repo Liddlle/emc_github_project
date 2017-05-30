@@ -5,9 +5,13 @@ library(stringr)
 library(tidyjson)
 library(httpuv)
 library(httr)
-myapp <- oauth_app(appname = "Github for socinfo",
+oauth_endpoints("github")
+myapp <- oauth_app(appname = "socinfo",
                    key = "7d46b74499a2c1075b45",
                    secret = "a9568ff92b8d6b05a6099b47f0d6a65d8c2a2e24")
+
+github_token <- oauth2.0_token(oauth_endpoints("github"), myapp, cache = F)
+gtoken <- config(token = github_token)
 
 r_urls = gh_list_packages()
 r_urls = r_urls %>% 
@@ -16,14 +20,10 @@ r_urls = r_urls %>%
   mutate(url_normal = paste("https://github.com/", username, "/", package_name, sep = ""))
 url_proj = paste0("'", r_urls$url, "'", collapse = ", ", sep = "")
 
-r_50 <- read_csv("~/emc_github_project/r_50.csv")
-#r_50 <- read_csv("~/emc_github_project/all_packages.csv")
-library(stringr)
-r_50$Name = enc2utf8(r_50$Name)
-r_50$Name = sapply(str_split(r_50$Name," "),'[',2)
-r_50 = r_50 %>% arrange(-Total)# %>% top_n(10)
+r_50 <- read_csv("~/emc_github_project/all_packages.csv")
+#r_50$Name = sapply(str_split(r_50$Name," "),'[',2)
 
-r_urls2 = r_urls %>% filter(package_name %in% r_50$Name) #%>% subset(!(package_name %in% repo_r$name))
+r_urls2 = r_urls %>% filter(package_name %in% r_50$Name) #%>% subset(!(package_name %in% repo_r2$name))
 #left = r_50 %>% subset(!(Name %in% repo_r$name))
 
 unique(r_urls2$package_name) %>% length()
@@ -32,53 +32,54 @@ unique(r_urls2$package_name) %>% length()
 #stringi not found
 
 #u = "https://api.github.com/repos/gagolews/stringi" #r_urls2$url[1]
-#repo_r = data.frame()
-for (u in r_urls2$url[27:nrow(r_urls2)]) {
+#repo_r2 = data.frame()
+for (u in r_urls2$url[1:nrow(r_urls2)]) {
   repos = GET(u, github_token)
   repos2 = content(repos, "text")
   repos3 = repos2 %>% spread_all
-  
-  repo_r = plyr::rbind.fill(repo_r, repos3)
-  Sys.sleep(1.2)
+  if (ncol(repos3)>5) {
+    repo_r2 = plyr::rbind.fill(repo_r2, repos3)
+    print(repos3$full_name)}
+  Sys.sleep(1)
 }
 
-library(readr)
-write_csv(repo_r, "repo_r.csv")
+#write_csv(repo_r2, "repo_r.csv")
+repo_r = read_csv("repo_r.csv")
 
-r_url = r_url$full_name %>% as.character()
-#commits = data.frame()
-#y = 8
+r_url = repo_r$full_name %>% as.character()
+
+#commits_new = data.frame()
+#y = r_url[1]
 #i = 1
-for (y in r_url[42:56]) {
+urlss = strsplit(commits3$url %>% unlist() %>% as.character(), "/", perl=TRUE) 
+urlss = paste(lapply(urlss, `[[`, 5) %>% unlist(), "/", lapply(urlss, `[[`, 6) %>% unlist(), sep = "") 
+urlss = unique(urlss)
+
+r_url2 = subset(r_url, !(r_url %in% urlss)) 
+grep('AnnePetersen1/PCADSC', r_url2)
+
+for (y in r_url2[42:4506]) {
   for (i in 1:150) {
     link = paste("https://api.github.com/repos/", y, "/commits?page=", i, sep = "")
     temp <- GET(link, github_token)
     js = content(temp)
-    if (length(js)>0) {
+    if (length(js)>2) {
       commits_temp = jsonlite::fromJSON(jsonlite::toJSON(js, recursive = TRUE), flatten = TRUE)
-      commits_temp2 = data.frame(
-        sha = commits_temp$sha %>% unlist(),
-        url = commits_temp$url %>% unlist(),
-        date = commits_temp$commit.author.date %>% unlist()
-      ) 
-      if (nrow(commits_temp2)>1) {
-      commits3 = plyr::rbind.fill(commits3, commits_temp)}
-      Sys.sleep(1.5)
+      parents = commits_temp %>% select(parents) %>% as.character() 
+      commits_temp2 = commits_temp %>% select(-parents) 
+      commits_temp2 = sapply(commits_temp2, unlist)
+      commits_temp2 = cbind(commits_temp2, parents) %>% as.data.frame() 
+      commits_new = plyr::rbind.fill(commits_new, commits_temp)
+      Sys.sleep(1)
     } else {
-      break
-    }}
-print(y)}
+      next
+    }
+  }
+  print(y)}
+#AMolinaro/partDSA - This repository is empty.  
 
 write_csv(commits, "commits_simplified.csv")
 
 #data.table проверить
-
-commits = unlist(commits3[1])
-commits = data.frame(
-  sha = commits3$sha %>% unlist(),
-  url = commits3$url %>% unlist(),
-  date = commits3$commit.author.date %>% unlist()
-) 
-commits2 = commits$commit$author
 
 

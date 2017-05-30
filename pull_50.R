@@ -1,5 +1,9 @@
 library(dplyr)
 library(stringr)
+library(ggplot2)
+
+library(lubridate)
+#ищу номера pull request из подписей к коммитам 
 req = commits3 %>% filter(str_detect(commit.message,"#[0-9]+"))  %>% 
   filter(str_detect(url,"RcppCore/Rcpp")==FALSE)
 req = req %>% mutate(pull = str_extract(req$commit.message,"#[0-9]+") %>% str_replace("#", ""),
@@ -12,7 +16,7 @@ req$url = str_replace(req$url, "commits", "")
 
 y = 2772
 events_total = data.frame()
-
+#поиск информации о реквестах 
 for (y in 7484:nrow(req)) {
   link = paste(req$url[y], "pulls/", req$pull[y], sep = "")
   temp <- GET(link, github_token)
@@ -61,13 +65,13 @@ for (y in 7484:nrow(req)) {
   } else {
     next
   }}
+
   
 pull_table = events_total %>% 
   select(pull_user, head_repo, merged_by, number,
          created_at:merge_commit_sha, merged, comments, review_comments, commits:changed_files)
 
 
-library(lubridate)
 actors = pull_table  %>% group_by(pull_user) %>% tally() %>% arrange(-n)
 actors$type = ifelse(actors$pull_user %in% pull_table$merged_by, "core" , actors$n)
 actors$type = ifelse(actors$n > 9 & actors$type != "core", "middle" , actors$type)
@@ -81,7 +85,6 @@ pull_table$diff2 = round(as.numeric( as.character(pull_table$diff)),2)
 
 pull_table2 = left_join(pull_table, actors)
 
-library(ggplot2)
 ggplot(data = pull_table2, aes(x = factor(type), y = diff)) + geom_boxplot() + ylim(0,50)
 ggplot(data = pull_table2, aes(x = factor(type), y = log(diff2))) + geom_boxplot()
 
