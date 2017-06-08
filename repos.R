@@ -46,19 +46,20 @@ for (u in r_urls2$url[1:nrow(r_urls2)]) {
 #write_csv(repo_r2, "repo_r.csv")
 repo_r = read_csv("repo_r.csv")
 
-r_url = repo_r$full_name %>% as.character()
+r_url = repo_r$full_name %>% as.character() 
 
 #commits_new = data.frame()
 #y = r_url[1]
 #i = 1
-urlss = strsplit(commits3$url %>% unlist() %>% as.character(), "/", perl=TRUE) 
+urlss = strsplit(commits_new$url %>% unlist() %>% as.character(), "/", perl=TRUE) 
 urlss = paste(lapply(urlss, `[[`, 5) %>% unlist(), "/", lapply(urlss, `[[`, 6) %>% unlist(), sep = "") 
 urlss = unique(urlss)
 
 r_url2 = subset(r_url, !(r_url %in% urlss)) 
-grep('AnnePetersen1/PCADSC', r_url2)
+r_url2 = unique(r_url2)
+grep(y, r_url2)
 
-for (y in r_url2[42:4506]) {
+for (y in r_url2[3545:3554]) {
   for (i in 1:150) {
     link = paste("https://api.github.com/repos/", y, "/commits?page=", i, sep = "")
     temp <- GET(link, github_token)
@@ -70,16 +71,16 @@ for (y in r_url2[42:4506]) {
       commits_temp2 = sapply(commits_temp2, unlist)
       commits_temp2 = cbind(commits_temp2, parents) %>% as.data.frame() 
       commits_new = plyr::rbind.fill(commits_new, commits_temp)
-      Sys.sleep(1)
+      Sys.sleep(0.72)
     } else {
-      next
+      break
     }
   }
-  print(y)}
+  print(y)} 
+
+commits_new = unique(commits_new)
+commits_new
 #AMolinaro/partDSA - This repository is empty.  
-
-write_csv(commits, "commits_simplified.csv")
-
-#data.table проверить
-
-
+#LucyMcGowan/GMD #Error in sort.list(y) : invalid input 'fixed a few ðŸ›s' in 'utf8towcs' 
+#stephlocke/datasauRus то же самое
+write_csv(commits_new, "commits_simplified.csv")

@@ -5,3 +5,4 @@
 .httr-oauth
 r_id_projects.csv
 .gitignore
+data.Rdata
